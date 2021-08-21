@@ -48,10 +48,11 @@ class GeneticPF(fl.ParticleFilter):
 
     def mutate(self):
         # find particles to be mutated
-        idx = np.random.choice(2, p=[1.0-self.mutation_prob, self.mutation_prob], size=len(self.current_population))
-        for i in idx:
-            alpha = np.random.randint(self.dimension)
-            self.current_population[i][alpha] += np.random.normal(scale=self.mutation_size)
+        idx = np.random.choice(2, p=[1.0-self.mutation_prob, self.mutation_prob], size=len(self.current_population), replace=True)
+        for i, j in enumerate(idx):
+            if j == 1:
+                alpha = np.random.randint(self.dimension)
+                self.current_population[i][alpha] += np.random.normal(scale=self.mutation_size)
 
     def breed_first_gen(self):
         # create a mating pool
@@ -67,7 +68,7 @@ class GeneticPF(fl.ParticleFilter):
         # breed
         self.current_population = []
         for p in range(num_mating_pairs):
-            offsprings = self.crossover(self.particles[idx_m[p]], self.particles[idx_d[p]])
+            offsprings = self.crossover_regular(self.particles[idx_m[p]], self.particles[idx_d[p]])
             self.current_population += offsprings
         self.mutate()
 
@@ -85,7 +86,7 @@ class GeneticPF(fl.ParticleFilter):
         # breed
         self.current_population = []
         for p in range(num_mating_pairs):
-            self.current_population += self.crossover(self.particles[idx_m[p]], self.particles[idx_d[p]])
+            self.current_population += self.crossover_regular(self.particles[idx_m[p]], self.particles[idx_d[p]])
          
         self.mutate()
 

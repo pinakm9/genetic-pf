@@ -1,8 +1,10 @@
 import numpy as np
 import tables
+from tables import description
 import ipywidgets as widgets
 from IPython.display import display 
 import matplotlib.pyplot as plt
+import warnings
 
 class L2Compare:
 
@@ -16,7 +18,7 @@ class L2Compare:
         self.observation = np.array(hdf5.root.observation.read().tolist())
         hdf5.close()
         self.num_steps = len(self.observation)
-        self.dim_slider = widgets.IntSlider(value=dims[0], min=dims[0], max=dims[-1], step=1)
+        self.dim_slider = widgets.IntSlider(value=dims[0], min=dims[0], max=dims[-1], step=1, description='dimension')
         widgets.interact(self.error_plot, dim=self.dim_slider)
     
     def error_plot(self, dim):
@@ -49,7 +51,7 @@ class GenVsDim:
         self.observation = np.array(hdf5.root.observation.read().tolist())
         hdf5.close()
         self.num_steps = len(self.observation)
-        self.dim_slider = widgets.IntSlider(value=dims[0], min=dims[0], max=dims[-1], step=1)
+        self.dim_slider = widgets.IntSlider(value=dims[0], min=dims[0], max=dims[-1], step=1, description='dimension')
         widgets.interact(self.generation_plot, dim=self.dim_slider)
     
     def generation_plot(self, dim):
@@ -70,14 +72,46 @@ class GenVsDim:
         return error
 
 
-    def avg_gen_vs_dim(self):
+
+class AvgGenVsDim:
+    def __init__(self, folder, filter, dims, fig_size=(8, 8), nb_type='jupyter'):
+        self.folder = folder
+        self.filter = filter
+        self.dims = dims
+        self.nb_type = nb_type
+        self.asml_file = lambda dim: folder + '/{}_{}/assimilation.h5'.format(filter, dim)
+        self.avg_gen = np.zeros(len(self.dims))
+        for i, dim in enumerate(self.dims):
+            self.avg_gen[i] = np.mean(self.get_generation(dim))
+        self.fig_size = fig_size
+        hdf5 = tables.open_file(self.asml_file(dims[0]), 'r')
+        self.observation = np.array(hdf5.root.observation.read().tolist())
+        hdf5.close()
+        self.num_steps = len(self.observation)
+        self.degree_slider = widgets.IntSlider(value=dims[0], min=dims[0], max=dims[-1], step=1, description='degree')
+        self.button = widgets.Button(description='compute and plot')
+        self.button.on_click(self.avg_gen_vs_dim)
+        if self.nb_type == 'colab':
+            display(self.button, self.degree_slider)
+        else:
+            display(self.button, self.degree_slider)
+
+    def avg_gen_vs_dim(self, button):
+        degree = self.degree_slider.value
         fig = plt.figure(figsize=self.fig_size)
         ax = fig.add_subplot(111)
-        avg_gen = np.zeros(len(self.dims))
-        for i, dim in enumerate(self.dims):
-            avg_gen[i] = np.mean(self.get_generation(dim))
-        ax.plot(self.dims, avg_gen, label='avg gen count')
+        ax.plot(self.dims, self.avg_gen, label='avg gen count')
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', np.RankWarning)
+            poly = np.poly1d(np.polyfit(self.dims, self.avg_gen, degree))
+        ax.plot(self.dims, poly(self.dims), label='polyfit deg={}'.format(degree))
         ax.set_xlabel('dimension')
         ax.set_ylabel('avg number of generations')
         ax.legend()
         plt.show()
+
+    def get_generation(self, dim):
+        hdf5 = tables.open_file(self.asml_file(dim), 'r')
+        error = np.array(hdf5.root.generation.read().tolist())
+        hdf5.close()
+        return error
