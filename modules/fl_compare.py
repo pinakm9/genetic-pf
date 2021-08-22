@@ -88,7 +88,7 @@ class AvgGenVsDim:
         self.observation = np.array(hdf5.root.observation.read().tolist())
         hdf5.close()
         self.num_steps = len(self.observation)
-        self.degree_slider = widgets.IntSlider(value=dims[0], min=dims[0], max=dims[-1], step=1, description='degree')
+        self.degree_slider = widgets.IntSlider(value=1, min=1, max=10, step=1, description='degree')
         self.button = widgets.Button(description='compute and plot')
         self.button.on_click(self.avg_gen_vs_dim)
         if self.nb_type == 'colab':

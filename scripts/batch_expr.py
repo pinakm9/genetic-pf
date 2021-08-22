@@ -15,14 +15,14 @@ import genetic_pf as gfl
 import copy, os
 
 # set parameters 
-dims = range(3, 25)
+dims = range(3, 40)
 max_seed = 2021
 config = {}
 config['prior_cov'] = 1.0
 config['shift'] = 2.0
 config['obs_gap'] = 0.1
 config['obs_cov'] = 0.1
-config['asml_steps'] = 10
+config['asml_steps'] = 50
 batch_id = 0
 results_folder = '../data/batch_{}'.format(batch_id) 
 if not os.path.isdir(results_folder):
@@ -43,17 +43,17 @@ for d in dims:
     expr_name = 'Lorenz96_alt_{}'.format(d)
     # set filters
     gpf_config = {}
-    gpf_config['max_population'] = 2000
+    gpf_config['max_population'] = 400
     gpf_config['ellitism_factor'] = 0.5
-    gpf_config['mutation_size'] = 0.01
+    gpf_config['mutation_size'] = 0.5
     gpf_config['mutation_prob'] = 0.2
-    gpf_config['max_generations_per_step'] = 100
-    gpf_config['particle_count'] = 200
+    gpf_config['max_generations_per_step'] = 40
+    gpf_config['particle_count'] = 100
     gpf_config['folder'] = results_folder + '/gpf_{}'.format(d)
     gpf = gfl.GeneticPF(model, **gpf_config)
     
     bpf_config = {}
-    bpf_config['particle_count'] = 2000
+    bpf_config['particle_count'] = 400
     bpf_config['folder'] = results_folder + '/bpf_{}'.format(d)
     bpf = fl.ParticleFilter(model, **bpf_config)
 
@@ -70,24 +70,24 @@ for d in dims:
                noise = bpf_config['resampling_noise'])
                 
     # document results
-    if gpf.status == 'success':
-        gpf.plot_trajectories(true_trajectory, coords_to_plot=[0, 1, 2],\
+    gpf.plot_trajectories(true_trajectory, coords_to_plot=[0, 1, 2],\
                                     file_path=gpf.folder + '/trajectories.png', measurements=False)
-        gpf.compute_error(true_trajectory)
-        gpf.plot_error(semilogy=True, resampling=False)
+    gpf.compute_error(true_trajectory)
+    gpf.plot_error(semilogy=True, resampling=False)
     cc = cf.ConfigCollector(expr_name = expr_name, folder = gpf_config['folder'])
     config_all = {**config, **gpf_config} 
     config_all['status'] = gpf.status
     cc.add_params(config_all)
     cc.write(mode='json')
-
-    if bpf.status == 'success':
-        bpf.plot_trajectories(true_trajectory, coords_to_plot=[0, 1, 2],\
+    print('gpf-{} was a {}'.format(d, gpf.status))
+    
+    bpf.plot_trajectories(true_trajectory, coords_to_plot=[0, 1, 2],\
                                     file_path=bpf.folder + '/trajectories.png', measurements=False)
-        bpf.compute_error(true_trajectory)
-        bpf.plot_error(semilogy=True, resampling=False)
+    bpf.compute_error(true_trajectory)
+    bpf.plot_error(semilogy=True, resampling=False)
     cc = cf.ConfigCollector(expr_name = expr_name, folder = bpf_config['folder'])
     config_all = {**config, **bpf_config} 
     config_all['status'] = bpf.status
     cc.add_params(config_all)
     cc.write(mode='json')
+    print('bpf-{} was a {}'.format(d, bpf.status))

@@ -17,6 +17,11 @@ class GeneticPF(fl.ParticleFilter):
         self.cov = 0.1 * np.identity(self.dimension)
         tbl = self.hdf5.create_table(self.hdf5.root, 'generation', {'count': tables.Int32Col(pos = 0)})
         tbl.flush()
+        self.find_max_weight()
+
+    def find_max_weight(self):
+        self.max_log_weight = - 0.5 * np.log(2.0 * np.pi * self.model.observation.sigma[0][0]) * self.model.observation.dimension
+        self.max_weight = np.exp(self.max_log_weight)
 
     def crossover_regular(self, particle_m, particle_d):
         # find a cross-over point
@@ -52,53 +57,38 @@ class GeneticPF(fl.ParticleFilter):
         for i, j in enumerate(idx):
             if j == 1:
                 alpha = np.random.randint(self.dimension)
-                self.current_population[i][alpha] += np.random.normal(scale=self.mutation_size)
+                beta = np.random.choice(self.dimension, size=alpha, replace=False)
+                self.current_population[i, beta] += np.random.normal(scale=self.mutation_size, size=alpha)
 
-    def breed_first_gen(self):
+    def breed(self):
         # create a mating pool
         num_mating_pairs = int(self.max_population / 6)
-        idx_m = np.random.choice(self.particle_count, size=num_mating_pairs, replace=True, p=self.weights)
-        idx_d = np.random.choice(self.particle_count, size=num_mating_pairs, replace=True, p=self.weights)
-        for p in range(num_mating_pairs):
-            if idx_m[p] == idx_m[p]:
-                if idx_m[p] < self.particle_count - 1:
-                    idx_m[p] += 1
-                else:
-                    idx_m[p] -= 1
+        idx = len(self.current_population)
+        idx_m = np.random.choice(idx, size=num_mating_pairs, replace=True)# p=probs)
+        idx_d = np.random.choice(idx, size=num_mating_pairs, replace=True)# p=probs)
         # breed
-        self.current_population = []
+        new_population = []
         for p in range(num_mating_pairs):
-            offsprings = self.crossover_regular(self.particles[idx_m[p]], self.particles[idx_d[p]])
-            self.current_population += offsprings
+            new_population += self.crossover(self.current_population[idx_m[p]], self.current_population[idx_d[p]])
+        self.current_population = np.array(new_population) 
         self.mutate()
 
-    def breed_later_gen(self):
-        # create a mating pool
-        num_mating_pairs = int(self.max_population / 6)
-        idx_m = np.random.choice(self.particle_count, size=num_mating_pairs, replace=True, p=self.weights)
-        idx_d = np.random.choice(self.particle_count, size=num_mating_pairs, replace=True, p=self.weights)
-        for p in range(num_mating_pairs):
-            if idx_m[p] == idx_m[p]:
-                if idx_m[p] < self.particle_count - 1:
-                    idx_m[p] += 1
-                else:
-                    idx_m[p] -= 1
-        # breed
-        self.current_population = []
-        for p in range(num_mating_pairs):
-            self.current_population += self.crossover_regular(self.particles[idx_m[p]], self.particles[idx_d[p]])
-         
-        self.mutate()
+    def select(self, observation, threshold_factor=0.5):
+        self.pop_weights = np.array([self.model.observation.conditional_pdf(self.current_time, observation, particle)\
+                        for particle in self.current_population])
+        idx = np.where(self.pop_weights >= self.max_weight * threshold_factor)[0]
+        if len(idx) > 0:
+            a = self.current_selection_size
+            b = min(self.current_selection_size + len(idx), self.particle_count)
+            #print(self.particles[a: b].shape, self.current_population[idx].shape)
+            #print(idx, self.current_population[idx])
+            self.particles[a: b] = self.current_population[idx[: b-a]]
+            self.weights[a: b] = self.pop_weights[idx[: b-a]]
+            self.current_selection_size = b
+        #self.weights = np.array(self.weights)[idx][::-1][:self.particle_count]
+        #self.weights /= self.weights.sum()
 
-    def select(self, observation):
-        self.weights = [self.model.observation.conditional_pdf(self.current_time, observation, particle)\
-                        for particle in self.current_population]
-        idx = np.argsort(self.weights)
-        self.particles = np.array(self.current_population)[idx][::-1][:self.particle_count]
-        self.weights = np.array(self.weights)[idx][::-1][:self.particle_count]
-        self.weights /= self.weights.sum()
-
-    def one_step_update(self, observation, threshold_factor=0.9):
+    def one_step_update(self, observation, threshold_factor=0.5):
         """
         Description:
             Updates weights according to the last observation
@@ -108,20 +98,25 @@ class GeneticPF(fl.ParticleFilter):
             self.weights
         """
         # predict the new particles
-        if self.current_time == 0 and len(self.particles) != self.particle_count:
-            self.particles = self.model.hidden_state.sims[0].generate(self.particle_count)
+        if self.current_time == 0:
+            self.current_population = self.model.hidden_state.sims[0].generate(self.max_population) 
+            if len(self.particles) != self.particle_count:
+                self.particles = self.model.hidden_state.sims[0].generate(self.particle_count)
         elif self.current_time > 0:
-            self.particles = np.array([self.model.hidden_state.sims[self.current_time].algorithm(self.current_time, particle) for particle in self.particles])
+            self.current_population[self.particle_count :] = np.array([self.model.hidden_state.sims[self.current_time].algorithm(self.current_time, particle) for particle in self.current_population[self.particle_count :]])
+            self.current_population[: self.particle_count] = np.array([self.model.hidden_state.sims[self.current_time].algorithm(self.current_time, particle) for particle in self.particles])
 
-        self.breed_first_gen()
-        self.select(observation)
         gen = 0
-        while 1.0/(self.weights**2).sum() < threshold_factor * self.particle_count and gen < self.max_generations_per_step: 
-            self.breed_later_gen()
-            self.select(observation)
+        self.current_selection_size = 0
+        self.pop_weights = np.array([self.model.observation.conditional_pdf(self.current_time, observation, particle)\
+                        for particle in self.current_population])
+        while self.current_selection_size < self.particle_count and gen < self.max_generations_per_step: 
+            self.breed()
+            self.select(observation, threshold_factor)
             gen += 1
 
         # normalize weights
+        self.weights /= self.weights.sum()
         print('step: {}, sum of weights: {}'.format(self.current_time, self.weights.sum()), end='\r')
         if np.isnan(self.weights[0]) or np.isinf(self.weights[0]):
             self.status = 'faliure'

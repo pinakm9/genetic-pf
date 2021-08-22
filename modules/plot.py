@@ -42,6 +42,13 @@ class SignalPlotter(object):
                 self.dimension = 1
         else:
             self.dimension = dimension
+        
+        # make sure every signal has the same duration
+        self.length = max([len(s) for s in signals])
+        for i, s in enumerate(self.signals):
+            len_diff = self.length - len(s)
+            if len_diff != 0:
+                self.signals[i] = np.append(s, [np.full((self.dimension), np.nan)] * len_diff, axis=0)
 
     def plot_signals(self, labels = [], styles = [{'linestyle':'solid'}, {'marker':'o'}, {'marker':'^'}],\
                     plt_fns = ['plot', 'scatter', 'scatter'],  colors = ['red', 'green', 'blue'],\
@@ -78,7 +85,7 @@ class SignalPlotter(object):
         # plot self.signals against time
         if self.dimension == 1 and coords_to_plot == []:
             ax = fig.add_subplot(111)
-            t = np.linspace(self.start_time, self.start_time + (len(self.signals[0])-1)*self.time_step, num = min(max_pts, len(self.signals[0])))
+            t = np.linspace(self.start_time, self.start_time + (self.length-1)*self.time_step, num = min(max_pts, self.length))
             for i, signal in enumerate(self.signals):
                 signal = ut.Picker(signal).equidistant(objs_to_pick = max_pts)
                 getattr(ax, plt_fns[i])(t, signal, label = labels[i], color = colors[i], **styles[i])
@@ -104,7 +111,7 @@ class SignalPlotter(object):
         # plot the required coordinates separately against time
         elif self.dimension > 3 or coords_to_plot != []:
             ax, num_rows = [], len(coords_to_plot)
-            t = np.linspace(self.start_time, self.start_time + (len(self.signals[0])-1)*self.time_step, min(max_pts, len(self.signals[0])))
+            t = np.linspace(self.start_time, self.start_time + (self.length-1)*self.time_step, min(max_pts, self.length))
             for i in range(num_rows):
                 ax.append(fig.add_subplot(num_rows, 1, i+1))
                 for j, signal in enumerate(self.signals):

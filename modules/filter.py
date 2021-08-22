@@ -65,7 +65,12 @@ class Filter():
         Description:
             Computes error in assimilation for a random path
         """
-        self.error = hidden_path - self.computed_trajectory
+        len_diff = len(hidden_path) - len(self.computed_trajectory)
+        if len_diff == 0:
+            self.error = hidden_path - self.computed_trajectory
+        else:
+            self.error = hidden_path[:len(self.computed_trajectory)] - self.computed_trajectory
+            self.error = np.append(self.error, np.full((len_diff, hidden_path.shape[-1]), np.nan), axis=0)
         self.error_mean = np.mean(self.error, axis = 0)
         self.error_cov = np.std(self.error, axis = 0)
         self.abs_error = np.array([np.linalg.norm(error) for error in self.error])
