@@ -15,7 +15,7 @@ import genetic_pf as gfl
 import copy, os
 
 # set parameters 
-dims = range(3, 23)
+dims = range(40, 41)
 max_seed = 2021
 config = {}
 config['prior_cov'] = 1.0
