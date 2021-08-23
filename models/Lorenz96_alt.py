@@ -25,6 +25,7 @@ def get_model(x0, size, prior_cov=1.0, obs_cov=0.1, shift=0.0, obs_gap=0.1):
     half_dim = int(dim/2)
     mu_o, id_o, zero_o = np.zeros(half_dim), np.identity(half_dim), np.zeros(half_dim)
     shift = shift * np.ones(dim)
+    odims = [2*i for i in range(half_dim)]
 
     # define L96 ODE system
     def lorenz96_f(t, x):
@@ -47,7 +48,7 @@ def get_model(x0, size, prior_cov=1.0, obs_cov=0.1, shift=0.0, obs_gap=0.1):
     conditional_pdf_h = lambda k, x, past: scipy.stats.multivariate_normal.pdf(x, mean = func_h(k, past, zero), cov = eps*id)
 
     # define the observation model
-    func_o = lambda k, x, noise: np.array([x[2*i] for i in range(half_dim)]) + noise
+    func_o = lambda k, x, noise: x[odims] + noise
     observation_noise = sm.Simulation(algorithm = lambda *args: np.random.multivariate_normal(mu_o, obs_cov*id_o))
     conditional_pdf_o = lambda k, y, condition: scipy.stats.multivariate_normal.pdf(y, mean = func_o(0, condition, mu_o), cov = obs_cov*id_o)
 

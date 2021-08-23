@@ -15,7 +15,7 @@ import genetic_pf as gfl
 import copy, os
 
 # set parameters 
-dims = range(3, 40)
+dims = range(3, 23)
 max_seed = 2021
 config = {}
 config['prior_cov'] = 1.0
@@ -43,27 +43,26 @@ for d in dims:
     expr_name = 'Lorenz96_alt_{}'.format(d)
     # set filters
     gpf_config = {}
-    gpf_config['max_population'] = 400
-    gpf_config['ellitism_factor'] = 0.5
-    gpf_config['mutation_size'] = 0.5
+    gpf_config['max_population'] = 500
+    gpf_config['mutation_size'] = 0.1
     gpf_config['mutation_prob'] = 0.2
-    gpf_config['max_generations_per_step'] = 40
-    gpf_config['particle_count'] = 100
+    gpf_config['max_generations_per_step'] = 100
+    gpf_config['particle_count'] = 50
     gpf_config['folder'] = results_folder + '/gpf_{}'.format(d)
     gpf = gfl.GeneticPF(model, **gpf_config)
     
     bpf_config = {}
-    bpf_config['particle_count'] = 400
+    bpf_config['particle_count'] = 500
     bpf_config['folder'] = results_folder + '/bpf_{}'.format(d)
     bpf = fl.ParticleFilter(model, **bpf_config)
 
     # run filters
-    gpf_config['regeneration_threshold'] = 0.9
+    gpf_config['regeneration_threshold'] = 0.1
     print('assimilating with genetic filter, dimension -> {}'.format(d), end='\r')
     gpf.update(observed_path, threshold_factor=gpf_config['regeneration_threshold'])
     bpf_config['resampling_method'] = 'systematic_noisy'
-    bpf_config['resampling_threshold'] = 0.9
-    bpf_config['resampling_noise'] = 0.5
+    bpf_config['resampling_threshold'] = 1.0
+    bpf_config['resampling_noise'] = 1.0
     print('assimilating with particle filter, dimension -> {}'.format(d), end='\r')
     bpf.update(observed_path, threshold_factor=bpf_config['resampling_threshold'],\
                resampling_method = bpf_config['resampling_method'],\
