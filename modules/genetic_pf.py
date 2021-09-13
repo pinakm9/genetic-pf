@@ -175,3 +175,49 @@ class GeneticPF(fl.ParticleFilter):
             self.status = 'success'
         self.hdf5.close()
         return self.status
+
+
+
+
+
+
+
+
+
+class GeneticPF_1(GeneticPF):
+
+    def __init__(self, model, particle_count, folder = None, particles = None, max_generations_per_step=3,\
+                 mutation_prob=0.2, max_population=2000, mutation_size=0.01):
+        super().__init__(model, particle_count, folder, particles, max_generations_per_step,\
+                 mutation_prob, max_population, mutation_size)
+        
+    
+    def crossover(self, particle_m, particle_d):
+        # find a cross-over point
+        beta = np.random.uniform(size=1)
+        offsprings = []
+
+        #mu = beta[i] * particle_m + (1.0 - beta[i]) * particle_d 
+        a, b, c = np.random.random(size=3)
+        d = a + b + c
+        a, b, c = a/d, b/d, c/d 
+        mu = a * particle_m +  b * self.current_population[0] + c * particle_d
+        offsprings.append(np.random.multivariate_normal(mu, self.cov))
+
+        #mu = np.random.multivariate_normal(particle_m, self.cov)
+        return offsprings + [particle_m, particle_d]
+
+    def breed(self):
+        #print("________________________", len(self.current_population))
+        # create a mating pool
+        num_mating_pairs = int(self.max_population/3)
+        size = num_mating_pairs#-self.current_selection_size
+        #probs = self.pop_weights / self.pop_weights.sum()
+        idx_m = np.random.choice(self.max_population, size=size, replace=True, p=self.probs)
+        idx_d = np.random.choice(self.max_population, size=size, replace=True, p=self.probs)
+        # breed
+        new_population = []
+        for p in range(num_mating_pairs):
+            new_population += self.crossover(self.current_population[idx_m[p]], self.current_population[idx_d[p]])
+        #print("________________________", len(new_population), self.current_selection_size, num_mating_pairs, self.max_weight, max(self.pop_weights))
+        return np.array(new_population)

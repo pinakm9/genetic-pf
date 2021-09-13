@@ -12,24 +12,28 @@ class ConfigCollector:
 	    folder: Folder where to create the subfolder containing the results of the experiment
 	    config_dict: dictionary of parameter of the experiment
 	"""
-	def __init__(self, folder, expr_name = 'experiment', config_dict = {}):
+	def __init__(self, folder, expr_name = 'experiment', config_dict = {}, overwrite=True):
 		self.config = config_dict
 		self.folder = folder
 		# find experiment id
 		idx = []
-		for f in os.listdir(self.folder):
-			if f.startswith(expr_name):
-				words = f.split('#')
-				if len(words) > 0:
-					try:
-						idx.append(int(words[1]))
-					except:
-						pass
-		if len(idx) > 0:
-			id = max(idx) + 1
+		if not overwrite:
+			for f in os.listdir(self.folder):
+				if f.startswith(expr_name):
+					words = f.split('#')
+					if len(words) > 0:
+						try:
+							idx.append(int(words[1]))
+						except:
+							pass
+			if len(idx) > 0:
+				id = max(idx) + 1
+			else:
+				id = 0
+			self.expr_name = expr_name + '#' + str(id)
 		else:
-			id = 0
-		self.expr_name = expr_name + '#' + str(id)
+			self.expr_name = expr_name
+		
 		# create subfolder to contain experiment results
 		self.res_path = os.path.join(folder, self.expr_name)
 		if not os.path.exists(self.res_path):

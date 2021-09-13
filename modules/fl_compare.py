@@ -115,3 +115,36 @@ class AvgGenVsDim:
         error = np.array(hdf5.root.generation.read().tolist())
         hdf5.close()
         return error
+
+
+class WeightHistogram:
+
+    def __init__(self, folder, filter, dims, fig_size=(8, 8)):
+        self.folder = folder
+        self.filter = filter
+        self.dims = dims
+        self.asml_file = lambda dim: folder + '/{}_{}/assimilation.h5'.format(filter, dim)
+        self.fig_size = fig_size
+        hdf5 = tables.open_file(self.asml_file(dims[0]), 'r')
+        self.observation = np.array(hdf5.root.observation.read().tolist())
+        hdf5.close()
+        self.num_steps = len(self.observation)
+        self.dim_slider = widgets.IntSlider(value=dims[0], min=dims[0], max=dims[-1], step=1, description='dimension')
+        self.step_slider = widgets.IntSlider(value=0, min=0, max=self.num_steps, step=1, description='asml step')
+        widgets.interact(self.histogram, dim = self.dim_slider,step=self.step_slider)
+        #widgets.interact(self.histogram, step=self.step_slider)
+
+
+    def histogram(self, dim, step):
+        fig = plt.figure(figsize=self.fig_size)
+        ax = fig.add_subplot(111)
+        weights = self.get_weights(dim, step)
+        ax.hist(weights, bins=10, label='dim={}, step={}'.format(dim, step))
+        ax.set_ylabel('weights')
+        ax.legend()
+
+    def get_weights(self, dim, step):
+        hdf5 = tables.open_file(self.asml_file(dim), 'r')
+        weights = np.array(getattr(hdf5.root.weights, 'time_' + str(step)).read().tolist())
+        hdf5.close()
+        return weights
