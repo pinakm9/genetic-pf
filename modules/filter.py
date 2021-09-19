@@ -49,7 +49,7 @@ class Filter():
         model: a Model object containing the dynamic and measurement models
         current_time: integer-valued time starting at 0 denoting index of current hidden state
     """
-    def __init__(self, model):
+    def __init__(self, model, folder):
         """
         Args:
             model: a Model object containing the dynamic and measurement models
@@ -59,6 +59,9 @@ class Filter():
         self.computed_trajectory = np.empty((0, self.model.hidden_state.dimension))
         self.dimension = self.model.hidden_state.dimension
         self.status = 'blank'
+        self.folder = folder
+        if not os.path.isdir(folder):
+            os.mkdir(folder)
 
     def compute_error(self, hidden_path):
         """
@@ -100,13 +103,14 @@ class Filter():
         plt.close(fig)
 
 
-    def plot_error(self, show = False, file_path = None, title = None, semilogy = False):
+    def plot_error(self, show = False, title = None, semilogy = False):
+        file_path = self.folder + '/l2_error.png'
         fig, _ = plot.SignalPlotter(signals = [abs(self.abs_error)]).plot_signals(labels = ['absolute error'], styles = [{'linestyle':'solid'}],\
             plt_fns = ['semilogy' if semilogy else 'plot'], colors = ['black'], coords_to_plot = [0], show = show, file_path = file_path, title = title)
         plt.close(fig)
 
 
-        file_path = file_path.split('/')[0] + '/rmse.png'
+        file_path = self.folder + '/rmse.png'
         fig, _ = plot.SignalPlotter(signals = [abs(self.rmse)]).plot_signals(labels = ['rmse'], styles = [{'linestyle':'solid'}],\
             plt_fns = ['plot'], colors = ['black'], coords_to_plot = [0], show = show, file_path = file_path, title = title)
         plt.close(fig)
@@ -125,7 +129,7 @@ class ParticleFilter(Filter):
         weights: weights computed by the particle filter
         current_time: integer-valued time starting at 0 denoting index of current hidden state
     """
-    def __init__(self, model, particle_count, folder = None, particles = None):
+    def __init__(self, model, particle_count, folder=None,  particles = None):
         """
         Args:
             model: a Model object containing the dynamic and measurement models
@@ -134,7 +138,7 @@ class ParticleFilter(Filter):
             particles: custom particles to begin with, default = None
         """
         # assign attributes
-        super().__init__(model = model)
+        super().__init__(model=model, folder=folder)
         
         self.particle_count = particle_count
         self.weights = np.ones(particle_count)/particle_count
@@ -143,9 +147,7 @@ class ParticleFilter(Filter):
             self.particles = self.model.hidden_state.sims[0].generate(self.particle_count)
         else:
             self.particles = particles
-        self.folder = folder
-        if not os.path.isdir(folder):
-            os.mkdir(folder)
+        
         # set up recording
         if folder is not None:
             self.recording = True
@@ -358,7 +360,7 @@ class ParticleFilter(Filter):
         self.hdf5.close()
         return self.status
 
-    def plot_error(self, show = False, folder = None, title = None, semilogy = False, resampling = True):
+    def plot_error(self, show = False, title = None, semilogy = False, resampling = True):
         signals = [self.abs_error]
         labels = ['absolute error']
         styles = [{'linestyle':'solid'}]
@@ -808,8 +810,8 @@ class KalmanFilter(Filter):
     Attributes (extra):
 
     """
-    def __init__(self, model, mean0, cov0, jac_h_x = None, jac_h_n = None, jac_o_x = None, jac_o_n = None):
-        super().__init__(model = model)
+    def __init__(self, model, folder, mean0, cov0, jac_h_x = None, jac_h_n = None, jac_o_x = None, jac_o_n = None):
+        super().__init__(model=model, folder=folder)
         self.mean = mean0
         self.cov = cov0
         self.zero_h = np.zeros(self.model.hidden_state.dimension)
@@ -856,6 +858,25 @@ class KalmanFilter(Filter):
             self.computed_trajectory = np.append(self.computed_trajectory, [self.mean], axis = 0)
             self.current_time += 1
 
+    def gasp_cohn(self, x, y, c):
+        """
+        Gaspari-Cohn taper function
+        """
+        r = abs(x - y) / c
+        if r >= 0. and r < 1.:
+            return 1. - 5./3. * r**2 + 5./8.* r**3 + r**4 / 2. - r**5/4.
+        elif r >= 1. and r < 2.:
+            return 4. - 5.*r + 5./3. * r**2 + 5./8.* r**3 - r**4 / 2. + r**5/12. - 2./(3. * r)
+        else:
+            return 0.
+
+    def get_localizer_matrix(self, func, shape, *params):
+        l = np.ones(shape)
+        for i in range(shape[0]):
+            for j in range(shape[1]):
+                l[i][j] = func(i, j, *params)
+        return l
+
 
 class EnsembleKF(KalmanFilter):
     """
@@ -869,9 +890,12 @@ class EnsembleKF(KalmanFilter):
         ensemble: matrix containing the ensemble members in the columns
         D: generated data matrix
     """
-    def __init__(self, model, ensemble_size, record_path = None, ensemble = None, jac_h_x = None, jac_h_n = None, jac_o_x = None, jac_o_n = None):
-        super().__init__(model = model, mean0 = None, cov0 = None, jac_h_x = jac_h_x, jac_h_n = jac_h_n, jac_o_x = jac_o_x, jac_o_n = jac_o_n)
+    def __init__(self, model, ensemble_size, loc_r=None, folder = None, ensemble = None, jac_h_x = None, jac_h_n = None, jac_o_x = None, jac_o_n = None):
+        super().__init__(model = model, folder = folder, mean0 = None, cov0 = None, jac_h_x = jac_h_x, jac_h_n = jac_h_n, jac_o_x = jac_o_x, jac_o_n = jac_o_n)
         self.ensemble_size = ensemble_size
+        self.loc_r = loc_r
+        if loc_r is not None:
+            self.loc_mat = self.get_localizer_matrix(self.gasp_cohn, [self.model.hidden_state.dimension]*2, loc_r)
         #self.H = self.model.observation.func(self.current_time, np.identity(self.model.hidden_state.dimension), self.zero_o)
         if ensemble is None:
             self.ensemble = [] #np.zeros((self.model.hidden_state.dimension, self.ensemble_size))
@@ -880,21 +904,20 @@ class EnsembleKF(KalmanFilter):
         self.D = np.zeros((self.model.observation.dimension, self.ensemble_size))
 
         # set up recording
-        if record_path is not None:
+        if self.folder is not None:
             self.recording = True
-            self.record_path = record_path
-            if not os.path.isfile(self.record_path):
-                self.particle_description = {}
-                for i in range(self.dimension):
-                    self.particle_description['x' + str(i)] = tables.float64Col(pos = i)
-                hdf5 = tables.open_file(self.record_path, 'w')
-                hdf5.create_group('/', 'prior_ensemble')
-                hdf5.create_group('/', 'posterior_ensemble')
-                observation_description = {}
-                for i in range(model.observation.dimension):
-                    observation_description['x' + str(i)] = tables.float64Col(pos = i)
-                hdf5.create_table(hdf5.root, 'observation', observation_description)
-                hdf5.close()
+            self.record_path = self.folder + '/assimilation.h5'
+            self.particle_description = {}
+            for i in range(self.dimension):
+                self.particle_description['x' + str(i)] = tables.Float64Col(pos = i)
+            hdf5 = tables.open_file(self.record_path, 'w')
+            hdf5.create_group('/', 'prior_ensemble')
+            hdf5.create_group('/', 'posterior_ensemble')
+            observation_description = {}
+            for i in range(model.observation.dimension):
+                observation_description['x' + str(i)] = tables.Float64Col(pos = i)
+            hdf5.create_table(hdf5.root, 'observation', observation_description)
+            hdf5.close()
         else:
             self.recording = False
 
@@ -913,6 +936,8 @@ class EnsembleKF(KalmanFilter):
         mean = np.average(self.ensemble, axis = 1)
         A = self.ensemble - np.dot(mean.reshape(-1, 1), np.ones((1, self.ensemble_size)))
         C = np.dot(A, A.T)/(self.ensemble_size - 1.0)
+        if self.loc_r is not None:
+            C *= self.loc_mat
         H_x = self.jac_o_x(self.current_time, mean)
         S = np.linalg.multi_dot([H_x, C, H_x.T]) + self.measurement_noise_cov
         K = np.linalg.multi_dot([C, H_x.T, np.linalg.inv(S)])
@@ -981,6 +1006,35 @@ class EnsembleKF(KalmanFilter):
         ep.stich(folder = os.path.dirname(self.record_path), img_prefix = 'enkf_ensembles', pdf_name = 'enkf_evolution.pdf', clean_up = True,\
                  resolution = pdf_resolution)
 
+
+    def plot_error(self, show = False, title = None, semilogy = False, resampling = True):
+        signals = [self.abs_error]
+        labels = ['absolute error']
+        styles = [{'linestyle':'solid'}]
+        plt_fns = ['semilogy' if semilogy else 'plot']
+        colors = ['black']
+
+        sigma = np.average(np.sqrt(np.diag(self.model.observation.sigma)))
+        obs_std = sigma * np.ones(len(self.abs_error))
+        signals.append(obs_std)
+        labels.append('avg observation std')
+        styles.append({'linestyle': 'dashed'})
+        plt_fns.append('semilogy' if semilogy else 'plot')
+        colors.append('grey')
+        fig, _ = plot.SignalPlotter(signals = signals).plot_signals(labels = labels, styles = styles, plt_fns = plt_fns, colors = colors,\
+                           show = show, file_path = self.folder + '/l2_error.png', title = title)
+        plt.close(fig)
+
+        signals = [self.rmse]
+        labels = ['rmse']
+        styles = [{'linestyle':'solid'}]
+        plt_fns = ['semilogy' if semilogy else 'plot']
+        colors = ['black']
+        
+      
+        fig, _ = plot.SignalPlotter(signals = signals).plot_signals(labels = labels, styles = styles, plt_fns = plt_fns, colors = colors,\
+                           show = show, file_path = self.folder + '/rmse.png', title = title)
+        plt.close(fig)
 
 
 

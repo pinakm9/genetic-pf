@@ -2,7 +2,9 @@ import filter as fl
 import  numpy as np
 import copy
 import tables 
-import plot 
+import plot
+import joblib as jl
+import utility as ut
 
 class GeneticPF(fl.ParticleFilter):
 
@@ -152,6 +154,7 @@ class GeneticPF(fl.ParticleFilter):
             self.hdf5.root.generation.append(np.array([self.last_gen], dtype = np.int32))
             self.hdf5.root.generation.flush()
 
+    @ut.timer
     def update(self, observations, method = 'mean', threshold_factor=0.9):
         """
         Description:
@@ -178,8 +181,50 @@ class GeneticPF(fl.ParticleFilter):
 
 
 
+class ParallelGeneticPF(GeneticPF):
+    def __init__(self, model, particle_count, folder = None, particles = None, max_generations_per_step=3,\
+                 mutation_prob=0.2, max_population=2000, mutation_size=0.01):
+        super().__init__(model, particle_count, folder, particles, max_generations_per_step,\
+                 mutation_prob, max_population, mutation_size)
+        
 
+    def crossover(self, p):
+        # find a cross-over point
+        beta = np.random.uniform(size=1)
+        offsprings = []
+        particle_m, particle_d = self.current_population[self.idx_m[p]], self.current_population[self.idx_d[p]] 
+        for i in range(1):
+             mu = beta[i] * particle_m + (1.0 - beta[i]) * particle_d
+             offsprings.append(np.random.multivariate_normal(mu, self.cov))
+             #mu = np.random.multivariate_normal(particle_m, self.cov)
+        return offsprings + [particle_m, particle_d]
 
+    def breed(self):
+        #print("________________________", len(self.current_population))
+        # create a mating pool
+        num_mating_pairs = int(self.max_population/3)
+        size = num_mating_pairs#-self.current_selection_size
+        #probs = self.pop_weights / self.pop_weights.sum()
+        self.idx_m = np.random.choice(self.max_population, size=size, replace=True, p=self.probs)
+        self.idx_d = np.random.choice(self.max_population, size=size, replace=True, p=self.probs)
+        # breed
+        new_population = []
+        new_population = jl.Parallel(n_jobs=2, backend='threading')(jl.delayed(self.crossover)(p) for p in range(num_mating_pairs))
+        #print("________________________", len(new_population), self.current_selection_size, num_mating_pairs, self.max_weight, max(self.pop_weights))
+        return np.reshape(new_population, (-1, self.model.hidden_state.dimension))
+
+    def select(self, new_pop, observation, threshold_factor=0.5):
+        big_pop = np.concatenate((new_pop, self.current_population), axis=0)
+        pop_weights = np.array([self.model.observation.conditional_pdf(self.current_time, observation, member) for member in new_pop])
+        bpop_weights = np.concatenate((pop_weights, self.pop_weights), axis=0)
+        idx = np.argsort(bpop_weights)[::-1]
+        self.current_population = big_pop[idx][:self.max_population]
+        self.pop_weights = bpop_weights[idx][:self.max_population]
+        idx = np.where(pop_weights / pop_weights.sum() >= threshold_factor/self.particle_count)[0]
+        if len(idx) > 0:
+            a = self.current_selection_size
+            self.current_selection_size = self.current_selection_size + len(idx)
+        return idx
 
 
 

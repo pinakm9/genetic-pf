@@ -15,14 +15,14 @@ import genetic_pf as gfl
 import copy, os
 
 # set parameters 
-dims = range(3, 10)
+dims = range(25, 26)
 max_seed = 2021
 config = {}
 config['prior_cov'] = 1.0
 config['shift'] = 2.0
 config['obs_gap'] = 0.1
 config['obs_cov'] = 0.1
-config['asml_steps'] = 50
+config['asml_steps'] = 10
 batch_id = 1
 results_folder = '../data/batch_{}'.format(batch_id) 
 if not os.path.isdir(results_folder):
@@ -49,7 +49,7 @@ for d in dims:
     gpf_config['max_generations_per_step'] = 500
     gpf_config['particle_count'] = 50
     gpf_config['folder'] = results_folder + '/gpf_{}'.format(d)
-    gpf = gfl.GeneticPF_1(model, **gpf_config)
+    gpf = gfl.ParallelGeneticPF(model, **gpf_config)
     
     bpf_config = {}
     bpf_config['particle_count'] = 500
