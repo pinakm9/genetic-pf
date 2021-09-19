@@ -1,0 +1,12 @@
+{
+  "prior_cov": 1.0,
+  "shift": 2.0,
+  "obs_gap": 0.1,
+  "obs_cov": 0.1,
+  "asml_steps": 50,
+  "seed": 190,
+  "ensemble_size": 50,
+  "loc_r": 3,
+  "folder": "../data/batch_1/enkf_5",
+  "status": "blank"
+}

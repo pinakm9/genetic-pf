@@ -23,7 +23,7 @@ config['shift'] = 2.0
 config['obs_gap'] = 0.1
 config['obs_cov'] = 0.1
 config['asml_steps'] = 50
-batch_id = 1
+batch_id = 0
 results_folder = '../data/batch_{}'.format(batch_id) 
 if not os.path.isdir(results_folder):
     os.mkdir(results_folder)
@@ -42,6 +42,12 @@ for d in dims:
     observed_path = model.observation.generate_path(true_trajectory)
     expr_name = 'Lorenz96_alt_{}'.format(d)
     # set filters
+    enkf_config = {}
+    enkf_config['ensemble_size'] = 50
+    enkf_config['loc_r'] = 3
+    enkf_config['folder'] = results_folder + '/enkf_{}'.format(d)
+    enkf = fl.EnsembleKF(model, **enkf_config)
+    """
     gpf_config = {}
     gpf_config['max_population'] = 500
     gpf_config['mutation_size'] = 0.1
@@ -55,8 +61,10 @@ for d in dims:
     bpf_config['particle_count'] = 500
     bpf_config['folder'] = results_folder + '/bpf_{}'.format(d)
     bpf = fl.ParticleFilter(model, **bpf_config)
-
+    """
     # run filters
+    enkf.update(observed_path)
+    """
     gpf_config['regeneration_threshold'] = 0.1
     print('assimilating with genetic filter, dimension -> {}'.format(d), end='\r')
     gpf.update(observed_path, threshold_factor=gpf_config['regeneration_threshold'])
@@ -67,8 +75,19 @@ for d in dims:
     bpf.update(observed_path, threshold_factor=bpf_config['resampling_threshold'],\
                resampling_method = bpf_config['resampling_method'],\
                noise = bpf_config['resampling_noise'])
-                
+    """      
     # document results
+    enkf.plot_trajectories(true_trajectory, coords_to_plot=[0, 1, 2],\
+                                    file_path=enkf.folder + '/trajectories.png', measurements=False)
+    enkf.compute_error(true_trajectory)
+    enkf.plot_error(semilogy=True)
+    cc = cf.ConfigCollector(expr_name = expr_name, folder = enkf_config['folder'])
+    config_all = {**config, **enkf_config} 
+    config_all['status'] = enkf.status
+    cc.add_params(config_all)
+    cc.write(mode='json')
+    print('enkf-{} was a {}'.format(d, enkf.status))
+    """
     gpf.plot_trajectories(true_trajectory, coords_to_plot=[0, 1, 2],\
                                     file_path=gpf.folder + '/trajectories.png', measurements=False)
     gpf.compute_error(true_trajectory)
@@ -90,3 +109,4 @@ for d in dims:
     cc.add_params(config_all)
     cc.write(mode='json')
     print('bpf-{} was a {}'.format(d, bpf.status))
+    """

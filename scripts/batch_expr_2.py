@@ -79,7 +79,6 @@ for d in dims:
     enkf.plot_trajectories(true_trajectory, coords_to_plot=[0, 1, 2],\
                                     file_path=enkf.folder + '/trajectories.png', measurements=False)
     enkf.compute_error(true_trajectory)
-    print(enkf.error)
     enkf.plot_error(semilogy=True)
     cc = cf.ConfigCollector(expr_name = expr_name, folder = enkf_config['folder'])
     config_all = {**config, **enkf_config} 
