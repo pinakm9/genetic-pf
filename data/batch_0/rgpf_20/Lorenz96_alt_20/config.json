@@ -1,0 +1,17 @@
+{
+  "prior_cov": 1.0,
+  "shift": 2.0,
+  "obs_gap": 0.1,
+  "obs_cov": 0.1,
+  "asml_steps": 50,
+  "seed": 127,
+  "max_population": 500,
+  "mutation_size": 0.1,
+  "mutation_prob": 0.2,
+  "max_generations_per_step": 50,
+  "particle_count": 50,
+  "reg_coeff": 0.0,
+  "folder": "../data/batch_0/rgpf_20",
+  "regeneration_threshold": 0.1,
+  "status": "success"
+}

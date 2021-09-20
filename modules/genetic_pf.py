@@ -266,3 +266,100 @@ class GeneticPF_1(GeneticPF):
             new_population += self.crossover(self.current_population[idx_m[p]], self.current_population[idx_d[p]])
         #print("________________________", len(new_population), self.current_selection_size, num_mating_pairs, self.max_weight, max(self.pop_weights))
         return np.array(new_population)
+
+
+class RegGPF(GeneticPF):
+    def __init__(self, model, particle_count, folder = None, particles = None, max_generations_per_step=3,\
+                 mutation_prob=0.2, max_population=2000, mutation_size=0.01, reg_coeff=0.1):
+        super().__init__(model, particle_count, folder, particles, max_generations_per_step,\
+                 mutation_prob, max_population, mutation_size)
+        self.reg_coeff = reg_coeff
+        self.zero_h = np.zeros(self.model.hidden_state.dimension)
+        self.zero_o = np.zeros(self.model.observation.dimension)
+
+        self.F = lambda x: self.model.hidden_state.func(0, x, self.zero_h)
+        self.H = lambda x: self.model.observation.func(0, x, self.zero_o)
+
+    def crossover(self, particle_m, reference):
+        # find a cross-over point
+        offsprings = []
+        offsprings.append(np.random.multivariate_normal(particle_m, self.cov))
+
+        #mu = np.random.multivariate_normal(particle_m, self.cov)
+        return offsprings + [particle_m], [reference] * 2
+
+
+    def fitness(self, particle, reference, observation):
+        a = np.exp(-np.linalg.norm(particle - reference)**2) 
+        b = self.model.observation.conditional_pdf(self.current_time, observation, particle)
+        return self.reg_coeff * a + b 
+
+
+    def breed(self):
+        #print("________________________", len(self.current_population))
+        # create a mating pool
+        num_mating_pairs = int(self.max_population)
+        size = num_mating_pairs#-self.current_selection_size
+        #probs = self.pop_weights / self.pop_weights.sum()
+        idx_m = np.random.choice(self.max_population, size=size, replace=True, p=self.probs)
+        # breed
+        new_population = []
+        new_reference = []
+        for p in range(num_mating_pairs):
+            a, b = self.crossover(self.current_population[idx_m[p]], self.forecast[idx_m[p]])
+            new_population += a
+            new_reference += b
+        #print("________________________", len(new_population), self.current_selection_size, num_mating_pairs, self.max_weight, max(self.pop_weights))
+        return np.array(new_population), np.array(new_reference)
+
+    def select(self, new_pop, new_ref, observation, threshold_factor=0.5):
+        big_pop = np.concatenate((new_pop, self.current_population), axis=0)
+        pop_weights = np.array([self.fitness(member, new_ref[i], observation) for i, member in enumerate(new_pop)])
+        bpop_weights = np.concatenate((pop_weights, self.pop_weights), axis=0)
+        print(bpop_weights)
+        idx = np.argsort(bpop_weights)[::-1]
+        self.current_population = big_pop[idx][:self.max_population]
+        self.pop_weights = bpop_weights[idx][:self.max_population]
+        idx = np.where(pop_weights / pop_weights.sum() >= threshold_factor/self.particle_count)[0]
+        if len(idx) > 0:
+            a = self.current_selection_size
+            self.current_selection_size = self.current_selection_size + len(idx)
+        return idx
+
+    def one_step_update(self, observation, threshold_factor=0.5):
+        """
+        Description:
+            Updates weights according to the last observation
+        Args:
+            observation: an observation of dimension = self.dimension
+        Returns:
+            self.weights
+        """
+        # predict the new particles
+        if self.current_time == 0:
+            self.current_population = self.model.hidden_state.sims[0].generate(self.max_population) 
+            if len(self.particles) != self.particle_count:
+                self.particles = self.model.hidden_state.sims[0].generate(self.particle_count)
+        elif self.current_time > 0:
+            self.current_population = np.array([self.model.hidden_state.sims[self.current_time].algorithm(self.current_time, particle) for particle in self.current_population])
+            
+
+        gen = 0
+        self.current_selection_size = 0
+        self.forecast = copy.deepcopy(self.current_population)
+        self.pop_weights = np.array([self.fitness(member, member, observation) for member in self.current_population])
+        #self.select(self.current_population, observation, threshold_factor)
+        while self.current_selection_size < self.particle_count and gen < self.max_generations_per_step: 
+            pop, ref = self.breed()
+            self.select(pop, ref, observation, threshold_factor)
+            gen += 1
+        self.particles = self.current_population[:self.particle_count]
+        self.weights = self.pop_weights[:self.particle_count] #np.array([self.model.observation.conditional_pdf(self.current_time, observation, member) for member in self.particles])
+        # normalize weights
+        """
+        print('step: {}, sum of weights: {}'.format(self.current_time, self.weights.sum()), end='\r')
+        self.weights /= self.weights.sum()
+        if np.isnan(self.weights[0]) or np.isinf(self.weights[0]):
+            self.status = 'faliure'
+        """
+        self.last_gen = gen + 1

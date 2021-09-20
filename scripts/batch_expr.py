@@ -15,7 +15,7 @@ import genetic_pf as gfl
 import copy, os
 
 # set parameters 
-dims = range(3, 33)
+dims = range(20, 21)
 max_seed = 2021
 config = {}
 config['prior_cov'] = 1.0
@@ -42,12 +42,13 @@ for d in dims:
     observed_path = model.observation.generate_path(true_trajectory)
     expr_name = 'Lorenz96_alt_{}'.format(d)
     # set filters
+    """
     enkf_config = {}
     enkf_config['ensemble_size'] = 50
     enkf_config['loc_r'] = 3
     enkf_config['folder'] = results_folder + '/enkf_{}'.format(d)
     enkf = fl.EnsembleKF(model, **enkf_config)
-    """
+    
     gpf_config = {}
     gpf_config['max_population'] = 500
     gpf_config['mutation_size'] = 0.1
@@ -62,9 +63,20 @@ for d in dims:
     bpf_config['folder'] = results_folder + '/bpf_{}'.format(d)
     bpf = fl.ParticleFilter(model, **bpf_config)
     """
+
+    rgpf_config = {}
+    rgpf_config['max_population'] = 500
+    rgpf_config['mutation_size'] = 0.1
+    rgpf_config['mutation_prob'] = 0.2
+    rgpf_config['max_generations_per_step'] = 50
+    rgpf_config['particle_count'] = 50
+    rgpf_config['reg_coeff'] = 0.001
+    rgpf_config['folder'] = results_folder + '/rgpf_{}'.format(d)
+    rgpf = gfl.RegGPF(model, **rgpf_config)
     # run filters
-    enkf.update(observed_path)
     """
+    enkf.update(observed_path)
+    
     gpf_config['regeneration_threshold'] = 0.1
     print('assimilating with genetic filter, dimension -> {}'.format(d), end='\r')
     gpf.update(observed_path, threshold_factor=gpf_config['regeneration_threshold'])
@@ -75,8 +87,12 @@ for d in dims:
     bpf.update(observed_path, threshold_factor=bpf_config['resampling_threshold'],\
                resampling_method = bpf_config['resampling_method'],\
                noise = bpf_config['resampling_noise'])
-    """      
+    """
+    rgpf_config['regeneration_threshold'] = 0.1
+    print('assimilating with regularized genetic filter, dimension -> {}'.format(d), end='\r')
+    rgpf.update(observed_path, threshold_factor=rgpf_config['regeneration_threshold'])      
     # document results
+    """
     enkf.plot_trajectories(true_trajectory, coords_to_plot=[0, 1, 2],\
                                     file_path=enkf.folder + '/trajectories.png', measurements=False)
     enkf.compute_error(true_trajectory)
@@ -87,7 +103,7 @@ for d in dims:
     cc.add_params(config_all)
     cc.write(mode='json')
     print('enkf-{} was a {}'.format(d, enkf.status))
-    """
+    
     gpf.plot_trajectories(true_trajectory, coords_to_plot=[0, 1, 2],\
                                     file_path=gpf.folder + '/trajectories.png', measurements=False)
     gpf.compute_error(true_trajectory)
@@ -110,3 +126,12 @@ for d in dims:
     cc.write(mode='json')
     print('bpf-{} was a {}'.format(d, bpf.status))
     """
+    rgpf.plot_trajectories(true_trajectory, coords_to_plot=[0, 1, 2],\
+                                    file_path=rgpf.folder + '/trajectories.png', measurements=False)
+    rgpf.compute_error(true_trajectory)
+    rgpf.plot_error(semilogy=True, resampling=False)
+    cc = cf.ConfigCollector(expr_name = expr_name, folder = rgpf_config['folder'])
+    config_all = {**config, **rgpf_config} 
+    config_all['status'] = rgpf.status
+    cc.add_params(config_all)
+    cc.write(mode='json')
